@@ -1,0 +1,3 @@
+ORDER_TYPE_BUY = "buy"
+ORDER_TYPE_SELL = "sell"
+ORDER_TYPE_UNKNOWN = "unknown"
