@@ -1,4 +1,4 @@
-from sqlalchemy import Boolean, Column, ForeignKey, Integer, String
+from sqlalchemy import Boolean, Column, DateTime, ForeignKey, Integer, String
 from sqlalchemy.orm import relationship
 from sqlalchemy.schema import Index
 
@@ -16,6 +16,7 @@ class Position(Base):
     currency = Column(String, nullable=False)
     baseCurrency = Column(String, nullable=False)
     isOpen = Column(Boolean, nullable=False)
+    closedDate = Column(DateTime)
     orders = relationship("Order", back_populates="position", lazy="dynamic")
 
     __table_args__ = (Index(
@@ -73,6 +74,7 @@ class Position(Base):
 
     def close(self):
         self.isOpen = False
+        self.closedDate = self.orders.order_by(Order.closedDate.desc()).first()[0]
 
     def __str__(self):
         if self.orders.count() > 0:

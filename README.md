@@ -1,6 +1,16 @@
 # cryptocelot-tracker
 Cryptocurrency order tracker and analysis tool
 
+## Features
+
+* Automatic detection and processing of order history CSV files downloaded from exchanges
+* Hassle-free order retrieval directly from exchanges using API keys
+* Duplicate record prevention on import/refresh
+* Automatic position creation from exchange and currency pair
+* Automatic position closing (optional)
+* Break-even price calculation
+* Profit/loss calculation per position
+
 ## Installation
 
 ### Dependencies

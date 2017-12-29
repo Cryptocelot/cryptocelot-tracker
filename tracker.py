@@ -25,6 +25,7 @@ from order_list_view import OrderListView, SelectableOrderListView, NUM_DISPLAY_
 from parsers.history_parser import HistoryParser
 from pollers.bittrex_poller import BittrexPoller
 from pollers.gemini_poller import GeminiPoller
+from position_list_item import PositionListItem
 from trading.order import Order
 from trading.portfolio import Portfolio
 from trading.position import Position
@@ -52,6 +53,7 @@ class TrackerApp(App):
         self.progressBarLabel = None
         self.progressBar = None
 
+    @mainthread
     def _openImportDialog(self, _):
         """Display a file browser to select a CSV file containing trade history records."""
 
@@ -75,6 +77,7 @@ class TrackerApp(App):
         view.add_widget(layout)
         view.open()
 
+    @mainthread
     def _parseHistory(self, view, path):
         """Start a background thread to process the selected trade history file."""
 
@@ -135,15 +138,13 @@ class TrackerApp(App):
     def _updateAllDisplays(self, progressCallback, callback):
         """Refresh all displayed portfolio data in the GUI."""
 
-        self._updateDisplayedOrders(progressCallback)
-        self._updateDisplayedOpenPositions(progressCallback)
-        self._updateDisplayedClosedPositions(progressCallback)
+        self._updateOrderData(progressCallback)
+        self._updateOpenPositionData(progressCallback)
+        self._updateClosedPositionData(progressCallback)
         if callback:
             callback()
 
-    def _updateDisplayedOrders(self, progressCallback):
-        """Refresh the orders list in the GUI."""
-
+    def _updateOrderData(self, progressCallback):
         session = Session()
         # save header
         data = self.ordersTable.data[0:NUM_DISPLAY_COLUMNS]
@@ -157,16 +158,18 @@ class TrackerApp(App):
                     "{:.8f}".format(o.netBase)]
             data += [{'text': value, 'orderId': o.id} for value in values]
             progressCallback()
+        session.close()
+        self._updateOrderList(data, progressCallback)
+
+    @mainthread
+    def _updateOrderList(self, data, progressCallback):
         self.ordersTable.data = data
         progressCallback(text='Finished updating order list.')
-        session.close()
 
-    def _updateDisplayedOpenPositions(self, progressCallback):
-        """Refresh the open positions list in the GUI."""
-
+    def _updateOpenPositionData(self, progressCallback):
         session = Session()
         positions = self._currentPortfolio(session).getOpenPositions()
-        self.openPositionsTable.clear_widgets()
+        positionListItems = []
         progressCallback(text='Updating open positions list...', value=0, maxValue=len(positions))
         for position in positions:
             netCurrency = position.currencyProfitLoss()
@@ -191,39 +194,67 @@ class TrackerApp(App):
                 else:
                     positionText += "buy below {:.8f} {}".format(
                             abs(netBase / netCurrency), position.baseCurrency)
-            button = Button(text=positionText, halign='left', padding=(4, 4), size_hint_y=None)
-            button.positionId = position.id
-            button.bind(on_release=self._editPosition)
-            button.bind(texture_size=button.setter('size'))
-            button.bind(size=button.setter('text_size'))
-            self.openPositionsTable.add_widget(button)
+            positionListItems.append(PositionListItem(uiClass=Button, text=positionText, id=position.id))
             progressCallback()
-        progressCallback(text='Finished updating open positions list.')
         session.close()
+        self._updatePositionList(self.openPositionsTable, positionListItems, progressCallback)
 
-    def _updateDisplayedClosedPositions(self, progressCallback):
-        """Refresh the closed positions list in the GUI."""
+    @mainthread
+    def _updatePositionList(self, positionList, positionItems, progressCallback):
+        """Refresh a position list in the GUI."""
 
+        positionList.clear_widgets()
+        for item in positionItems:
+            uiItem = item.uiClass(text=item.text, halign='left', padding=(4, 4), size_hint_y=None)
+            if item.uiClass == Button:
+                uiItem.positionId = item.id
+                uiItem.bind(on_release=self._editPosition)
+            uiItem.bind(texture_size=uiItem.setter('size'))
+            uiItem.bind(size=uiItem.setter('text_size'))
+            positionList.add_widget(uiItem)
+        progressCallback(text='Finished updating positions list.')
+
+    def _updateClosedPositionData(self, progressCallback):
         session = Session()
-        positions = self._currentPortfolio(session).getClosedPositions()
-        self.closedPositionsTable.clear_widgets()
-        progressCallback(text='Updating closed positions list...', value=0, maxValue=len(positions))
+        positions = self._currentPortfolio(session).getClosedPositions(session)
+        positionItems = []
+        numPositions = positions.count()
+        progressCallback(text='Updating closed positions list...', value=0, maxValue=numPositions)
+        lastExchange = ""
+        lastBaseCurrency = ""
+        lastCurrency = ""
         for position in positions:
+            if position.exchange != lastExchange:
+                positionItems.append(PositionListItem(uiClass=Label, text=position.exchange))
+                lastExchange = position.exchange
+            if position.baseCurrency != lastBaseCurrency:
+                positionItems.append(PositionListItem(uiClass=Label, text="    " + position.baseCurrency))
+                lastBaseCurrency = position.baseCurrency
+            if position.currency != lastCurrency:
+                positionItems.append(PositionListItem(uiClass=Label, text="        " + position.currency))
+                lastCurrency = position.currency
+
+            closedDate = position.closedDate
+            if not closedDate:
+                try:
+                    closedDate = (session.query(Order.closedDate)
+                            .filter(Order.position == position)
+                            .order_by(Order.closedDate.desc())
+                            .first()[0])
+                    position.closedDate = closedDate
+                except TypeError:
+                    Logger.error("Position %d has no orders.", position.id)
+                    closedDate = "no date"
             netCurrency = position.currencyProfitLoss()
             netBase = position.baseProfitLoss()
-            positionText = "{0} {1}/{2}: {3:+.8f} {2}, {4:+.8f} {1}\n".format(
-                    position.exchange, position.baseCurrency,
-                    position.currency, netCurrency, netBase)
-            positionText += "Profit/loss: {:+.2f}%".format(position.baseProfitPercent())
-            button = Button(text=positionText, halign='left', padding=(4, 4), size_hint_y=None)
-            button.positionId = position.id
-            button.bind(on_release=self._editPosition)
-            button.bind(texture_size=button.setter('size'))
-            button.bind(size=button.setter('text_size'))
-            self.closedPositionsTable.add_widget(button)
+            positionText = "{}: {:+.8f} {}, {:+.8f} {} ({:+.2f}%)".format(
+                    str(closedDate).rsplit('.')[0], netCurrency, position.currency, netBase,
+                    position.baseCurrency, position.baseProfitPercent())
+            positionItems.append(PositionListItem(uiClass=Button, text=positionText, id=position.id))
             progressCallback()
-        progressCallback('Finished updating closed positions list.')
+        session.commit()
         session.close()
+        self._updatePositionList(self.closedPositionsTable, positionItems, progressCallback)
 
     @mainthread
     def doneImport(self):
@@ -256,7 +287,7 @@ class TrackerApp(App):
                     position.exchange, position.baseCurrency,
                     position.currency, len(offer['orderIds']))
             offer['text2'] = "Open {}, close {}, profit {} {}".format(
-                    firstOrder.closedDate, lastOrder.closedDate,
+                    str(firstOrder.closedDate).rsplit('.')[0], lastOrder.closedDate,
                     offer['netBase'], position.baseCurrency)
             self.closedPositionOffers.append(offer)
         session.close()
@@ -296,8 +327,8 @@ class TrackerApp(App):
             view.add_widget(layout)
             view.open()
         else:
-            self._updateDisplayedOpenPositions(self.updateProgress)
-            self._updateDisplayedClosedPositions(self.updateProgress)
+            self._updateOpenPositionData(self.updateProgress)
+            self._updateClosedPositionData(self.updateProgress)
 
     def _editPosition(self, instance):
         """Display the order list for a position.

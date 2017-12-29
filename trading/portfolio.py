@@ -1,7 +1,8 @@
-from sqlalchemy import and_, Column, Integer
+from sqlalchemy import Column, Integer
 from sqlalchemy.orm import relationship
 
 from model import Base, Session
+from trading.position import Position
 from trading.wallet import Wallet
 
 class Portfolio(Base):
@@ -18,7 +19,7 @@ class Portfolio(Base):
                 session.add(wallet)
                 self.wallets.append(wallet)
             else:
-                wallet = self.wallets.filter(and_(Wallet.name == order.exchange, Wallet.portfolio == self)).first()
+                wallet = self.wallets.filter(Wallet.name == order.exchange, Wallet.portfolio == self).first()
             if order.id not in [order.id for order in wallet.orders]:
                 wallet.addOrder(order, session)
             progressCallback()
@@ -50,11 +51,17 @@ class Portfolio(Base):
             positions += wallet.getOpenPositions()
         return positions
 
-    def getClosedPositions(self):
-        positions = []
-        for wallet in self.wallets:
-            positions += wallet.getClosedPositions()
-        return positions
+    def getClosedPositions(self, session):
+        return (session.query(Position)
+                .filter(
+                        Position.wallet.has(Wallet.portfolio == self),
+                        Position.isOpen == False)
+                .order_by(
+                        Position.exchange.asc(),
+                        Position.baseCurrency.asc(),
+                        Position.currency.asc(),
+                        Position.closedDate.desc()
+                ))
 
     def closePosition(self, position):
         for wallet in self.wallets:
