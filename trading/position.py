@@ -74,7 +74,7 @@ class Position(Base):
 
     def close(self):
         self.isOpen = False
-        self.closedDate = self.orders.order_by(Order.closedDate.desc()).first()[0]
+        self.closedDate = self.orders.order_by(Order.closedDate.desc()).first().closedDate
 
     def __str__(self):
         if self.orders.count() > 0:
