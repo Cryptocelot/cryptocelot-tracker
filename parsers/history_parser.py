@@ -20,6 +20,7 @@ class HistoryParser():
                 Logger.error("Error parsing history file: %s", e)
         else:
             Logger.warning("Unsupported history file with header: %s", header)
+            progressCallback(text="Unsupported history file.")
 
     @staticmethod
     def ordersFromTrades(trades):

@@ -18,12 +18,15 @@ def normalizeOrderType(orderType):
         return ORDER_TYPE_UNKNOWN
 
 def normalizeKrakenMarket(market):
-    # change e.g. ZUSD to USD, XETH to ETH
-    market = re.sub(r'^[XZ]([A-Z]{3})[XZ]([A-Z]{3})$', r'\1\2', market)
-    # change to standard representation
-    market = market.replace('XBT', 'BTC')
     currency, baseCurrency = market[:len(market)//2], market[len(market)//2:]
-    return currency, baseCurrency
+    return normalizeKrakenCurrency(currency), normalizeKrakenCurrency(baseCurrency)
+
+def normalizeKrakenCurrency(currency):
+    # change e.g. ZUSD to USD, XETH to ETH
+    currency = re.sub(r'^[XZ]([A-Z0-9]{3})$', r'\1', currency)
+    # change to standard representation
+    currency = currency.replace('XBT', 'BTC')
+    return currency
 
 def normalizeKrakenDate(date):
     return parse(date[:date.rfind('.')])

@@ -38,6 +38,9 @@ Builder.load_string('''
     viewclass: 'SelectableOrderLabel'
     SelectableRecycleGridLayout:
         id: layout
+        # Labels in first column do not take on the minimum width
+        # specified here, so make it 0 to remove the minimum
+        cols_minimum: {0: 0, 1: 76, 2: 44, 3: 70, 4: 44, 5: 88, 6: 88, 7: 88, 8: 98, 9: 92}
         default_size: dp(1), dp(1)
         default_size_hint: None, None
         size_hint: None, None
@@ -100,12 +103,15 @@ class SelectableOrderListView(RecycleView):
     def __init__(self, **kwargs):
         super(SelectableOrderListView, self).__init__(**kwargs)
         self.selectedOrderIds = []
+        self.selectionObservers = []
 
     def orderSelected(self, orderId):
         if orderId not in self.selectedOrderIds:
             self.selectedOrderIds.append(orderId)
         else:
             self.selectedOrderIds.remove(orderId)
+        for observer in self.selectionObservers:
+            observer.notify()
 
     def getSelectedOrderIds(self):
         return self.selectedOrderIds

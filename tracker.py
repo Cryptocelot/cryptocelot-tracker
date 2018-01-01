@@ -1,7 +1,6 @@
 """Main module for the trade tracker program."""
 
 from decimal import getcontext
-import os
 import sys
 import threading
 
@@ -10,9 +9,9 @@ from kivy.clock import mainthread
 from kivy.logger import Logger, LOG_LEVELS
 from kivy.uix.boxlayout import BoxLayout
 from kivy.uix.button import Button
-from kivy.uix.filechooser import FileChooserListView
 from kivy.uix.label import Label
 from kivy.uix.modalview import ModalView
+from kivy.uix.popup import Popup
 from kivy.uix.progressbar import ProgressBar
 from kivy.uix.scrollview import ScrollView
 from kivy.uix.stacklayout import StackLayout
@@ -21,14 +20,16 @@ from kivy.uix.tabbedpanel import TabbedPanelItem
 
 from keys import KEYS
 from model import Base, engine, Session
-from order_list_view import OrderListView, SelectableOrderListView, NUM_DISPLAY_COLUMNS
 from parsers.history_parser import HistoryParser
 from pollers.bittrex_poller import BittrexPoller
 from pollers.gemini_poller import GeminiPoller
-from position_list_item import PositionListItem
 from trading.order import Order
 from trading.portfolio import Portfolio
 from trading.position import Position
+from ui.import_dialog import ImportDialog
+from ui.order_list_view import OrderListView, NUM_DISPLAY_COLUMNS
+from ui.position_list_item import PositionListItem
+from ui.position_order_list_dialog import PositionOrderListDialog
 
 NUM_DECIMAL_PLACES = 8
 
@@ -44,52 +45,34 @@ class TrackerApp(App):
         getcontext().prec = NUM_DECIMAL_PLACES
         Base.metadata.create_all(engine)
 
+        self.portfolioId = None
         self.ordersTable = None
         self.openPositionsTable = None
         self.closedPositionsTable = None
         self.closedPositionOffers = []
-        self.portfolioId = None
+        self.importDialog = None
         self.importProgressView = None
         self.progressBarLabel = None
         self.progressBar = None
-
-    @mainthread
-    def _openImportDialog(self, _):
-        """Display a file browser to select a CSV file containing trade history records."""
-
-        view = ModalView(auto_dismiss=False, size_hint=(None, None), size=(400, 400))
-
-        chooser = FileChooserListView(
-                path=os.path.expanduser('~'),
-                filters=['*.csv'],
-                size_hint=(1, 0.9))
-        chooser.bind(on_submit=lambda *_: self._parseHistory(view, chooser.selection))
-
-        layout = StackLayout()
-        layout.add_widget(Label(text="Select a CSV file from Bittrex, Kraken, or Poloniex.", size_hint_y=0))
-        layout.add_widget(chooser)
-        layout.add_widget(Button(text='Cancel', on_release=view.dismiss, size_hint=(0.5, 0.1)))
-        layout.add_widget(Button(
-                text='OK',
-                on_release=lambda *_: self._parseHistory(view, chooser.selection),
-                size_hint=(0.5, 0.1)))
-
-        view.add_widget(layout)
-        view.open()
 
     @mainthread
     def _parseHistory(self, view, path):
         """Start a background thread to process the selected trade history file."""
 
         view.dismiss()
+        if len(path) > 0:
+            self.openImportProgressView()
+            threading.Thread(
+                    target=HistoryParser.parseHistory,
+                    kwargs={
+                            'filename': path[0],
+                            'progressCallback': self.updateProgress,
+                            'callback': self.doneParseHistory
+                    }).start()
+
+    @mainthread
+    def openImportProgressView(self):
         self.importProgressView.open()
-        threading.Thread(
-                target=HistoryParser.parseHistory,
-                kwargs={
-                        'filename': path[0],
-                        'progressCallback': self.updateProgress,
-                        'callback': self.doneParseHistory
-                }).start()
 
     @mainthread
     def updateProgress(self, text=None, value=None, maxValue=None):
@@ -138,6 +121,7 @@ class TrackerApp(App):
     def _updateAllDisplays(self, progressCallback, callback):
         """Refresh all displayed portfolio data in the GUI."""
 
+        self.openImportProgressView()
         self._updateOrderData(progressCallback)
         self._updateOpenPositionData(progressCallback)
         self._updateClosedPositionData(progressCallback)
@@ -145,11 +129,12 @@ class TrackerApp(App):
             callback()
 
     def _updateOrderData(self, progressCallback):
+        progressCallback(text='Updating order list...')
         session = Session()
         # save header
         data = self.ordersTable.data[0:NUM_DISPLAY_COLUMNS]
         orders = self._currentPortfolio(session).getOrders()
-        progressCallback(text='Updating order list...', value=0, maxValue=len(orders))
+        progressCallback(value=0, maxValue=len(orders))
         for o in orders:
             values = [
                     str(o.closedDate).rsplit('.', 1)[0], o.exchange, o.orderType, o.currency,
@@ -337,21 +322,6 @@ class TrackerApp(App):
         """
 
         session = Session()
-        view = ModalView(auto_dismiss=False, size_hint=(None, None), size=(600, 400))
-        orderListView = SelectableOrderListView(size_hint=(1, 0.9))
-        # Labels in first column do not take on the minimum width
-        # specified here, so make it 0 to remove the minimum
-        orderListView.ids.layout.cols_minimum = {
-                0: 0,
-                1: 76,
-                2: 44,
-                3: 70,
-                4: 44,
-                5: 88,
-                6: 88,
-                7: 88,
-                8: 98,
-                9: 92}
         data = []
         for col, header in enumerate(self.HEADER_LABELS):
             data += [{'text': header, 'orderId': None, 'col': col}]
@@ -363,22 +333,8 @@ class TrackerApp(App):
                     "{:.8f}".format(o.subtotal), "{:.8f}".format(o.netCurrency),
                     "{:.8f}".format(o.netBase)]
             data += [{'text': value, 'orderId': o.id, 'col': col} for col, value in enumerate(values)]
-        orderListView.data = data
 
-        layout = StackLayout()
-        layout.add_widget(orderListView)
-        layout.add_widget(Button(text='Cancel', on_release=view.dismiss, size_hint=(0.5, 0.1)))
-        if position.isOpen:
-            closePositionButton = Button(
-                    text='New Closed Position from Selected Orders',
-                    on_release=self._closePositionFromOrderList,
-                    size_hint=(0.5, 0.1))
-            closePositionButton.viewToDismiss = view
-            closePositionButton.positionId = instance.positionId
-            closePositionButton.orderListView = orderListView
-            layout.add_widget(closePositionButton)
-
-        view.add_widget(layout)
+        view = PositionOrderListDialog(instance.positionId, position.isOpen, data, self._closePositionFromOrderList)
         view.open()
         session.close()
 
@@ -412,17 +368,18 @@ class TrackerApp(App):
 
         threading.Thread(target=self._updateAllDisplays, kwargs={
                 'progressCallback': self.updateProgress,
-                'callback': None}).start()
+                'callback': self.importProgressView.dismiss}).start()
 
     def _closePositionFromOrderList(self, button):
         """Start a background thread to close the position."""
 
         selectedOrderIds = button.orderListView.getSelectedOrderIds()
-        threading.Thread(target=self._closePosition, kwargs={
-                'positionId': button.positionId,
-                'orderIds': selectedOrderIds,
-                'callback': self.doneClosePosition}).start()
-        button.viewToDismiss.dismiss()
+        if len(selectedOrderIds) > 0:
+            threading.Thread(target=self._closePosition, kwargs={
+                    'positionId': button.positionId,
+                    'orderIds': selectedOrderIds,
+                    'callback': self.doneClosePosition}).start()
+            button.viewToDismiss.dismiss()
 
     def _pollBittrex(self, _):
         """Start a background thread to query the Bittrex API for order history."""
@@ -434,7 +391,7 @@ class TrackerApp(App):
             threading.Thread(target=bittrex.getOrders, kwargs={
                     'progressCallback': self.updateProgress,
                     'callback': self.doneParseHistory}).start()
-            self.importProgressView.open()
+            self.openImportProgressView()
         except:
             Logger.error("Could not refresh from Bittrex. Check keys.py.")
 
@@ -448,7 +405,7 @@ class TrackerApp(App):
             threading.Thread(target=gemini.getOrders, kwargs={
                     'progressCallback': self.updateProgress,
                     'callback': self.doneParseHistory}).start()
-            self.importProgressView.open()
+            self.openImportProgressView()
         except:
             Logger.error("Could not refresh from Gemini. Check keys.py.")
 
@@ -470,15 +427,17 @@ class TrackerApp(App):
 
         threading.Thread(target=self._updateAllDisplays, kwargs={
                 'progressCallback': self.updateProgress,
-                'callback': None}).start()
+                'callback': self.importProgressView.dismiss}).start()
 
         return layout
 
     def _createLeftPanel(self):
         """Create the left panel of the main window."""
 
+        self.importDialog = ImportDialog(okCallback=self._parseHistory)
+
         importButton = Button(text='Import History', size_hint_y=0.1)
-        importButton.bind(on_release=self._openImportDialog)
+        importButton.bind(on_release=self.importDialog.open)
 
         pollBittrexButton = Button(text='Refresh from Bittrex', size_hint_y=0.1)
         pollBittrexButton.bind(on_release=self._pollBittrex)
@@ -496,7 +455,8 @@ class TrackerApp(App):
     def _createImportProgressView(self):
         """Create the import progress GUI elements."""
 
-        self.importProgressView = ModalView(
+        self.importProgressView = Popup(
+                title='Progress',
                 auto_dismiss=False,
                 size_hint=(None, None),
                 size=(350, 150))
@@ -509,7 +469,7 @@ class TrackerApp(App):
         progressLayout.add_widget(self.progressBar)
         progressLayout.add_widget(Button(text='OK', on_release=self.importProgressView.dismiss))
 
-        self.importProgressView.add_widget(progressLayout)
+        self.importProgressView.content = progressLayout
 
     def _createMainPanel(self):
         """Create the tabbed panel making up most of the interface."""
