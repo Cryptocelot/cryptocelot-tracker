@@ -1,6 +1,5 @@
 """Main module for the trade tracker program."""
 
-from decimal import getcontext
 import sys
 import threading
 
@@ -42,7 +41,6 @@ class TrackerApp(App):
 
     def __init__(self, **kwargs):
         super(TrackerApp, self).__init__(**kwargs)
-        getcontext().prec = NUM_DECIMAL_PLACES
         Base.metadata.create_all(engine)
 
         self.portfolioId = None
@@ -138,13 +136,19 @@ class TrackerApp(App):
         for o in orders:
             values = [
                     str(o.closedDate).rsplit('.', 1)[0], o.exchange, o.orderType, o.currency,
-                    o.baseCurrency, "{:.8f}".format(o.quantity), "{:.8f}".format(o.averagePrice()),
-                    "{:.8f}".format(o.subtotal), "{:.8f}".format(o.netCurrency),
-                    "{:.8f}".format(o.netBase)]
+                    o.baseCurrency, self._format(o.quantity), self._format(o.averagePrice()),
+                    self._format(o.subtotal), self._format(o.netCurrency), self._format(o.netBase)]
             data += [{'text': value, 'orderId': o.id} for value in values]
             progressCallback()
         session.close()
         self._updateOrderList(data, progressCallback)
+
+    def _format(self, number, withSign=False):
+        sign = ""
+        if withSign:
+            sign = "+"
+        return "{number:{sign}.{precision}f}".format(
+                number=number, sign=sign, precision=NUM_DECIMAL_PLACES)
 
     @mainthread
     def _updateOrderList(self, data, progressCallback):
@@ -159,13 +163,13 @@ class TrackerApp(App):
         for position in positions:
             netCurrency = position.currencyProfitLoss()
             netBase = position.baseProfitLoss()
-            positionText = "{0} {1}/{2}: {3:+.8f} {2}, {4:+.8f} {1}\n".format(
-                    position.exchange, position.baseCurrency,
-                    position.currency, netCurrency, netBase)
+            positionText = "{0} {1}/{2}: {3} {2}, {4} {1}\n".format(
+                    position.exchange, position.baseCurrency, position.currency,
+                    self._format(netCurrency, withSign=True), self._format(netBase, withSign=True))
             if netCurrency > 0:
                 if netBase < 0:
-                    positionText += "sell above {:.8f} {}".format(
-                            abs(netBase / netCurrency), position.baseCurrency)
+                    positionText += "sell above {} {}".format(
+                            self._format(abs(netBase / netCurrency)), position.baseCurrency)
                 else:
                     positionText += "in profit"
             elif netCurrency == 0:
@@ -177,8 +181,8 @@ class TrackerApp(App):
                 if netBase <= 0:
                     positionText += "in loss"
                 else:
-                    positionText += "buy below {:.8f} {}".format(
-                            abs(netBase / netCurrency), position.baseCurrency)
+                    positionText += "buy below {} {}".format(
+                            self._format(abs(netBase / netCurrency)), position.baseCurrency)
             positionListItems.append(PositionListItem(uiClass=Button, text=positionText, id=position.id))
             progressCallback()
         session.close()
@@ -195,9 +199,12 @@ class TrackerApp(App):
                 uiItem.positionId = item.id
                 uiItem.bind(on_release=self._editPosition)
             uiItem.bind(texture_size=uiItem.setter('size'))
-            uiItem.bind(size=uiItem.setter('text_size'))
+            uiItem.bind(width=self._setTextWidth)
             positionList.add_widget(uiItem)
         progressCallback(text='Finished updating positions list.')
+
+    def _setTextWidth(self, instance, value):
+        instance.text_size[0] = value
 
     def _updateClosedPositionData(self, progressCallback):
         session = Session()
@@ -232,8 +239,9 @@ class TrackerApp(App):
                     closedDate = "no date"
             netCurrency = position.currencyProfitLoss()
             netBase = position.baseProfitLoss()
-            positionText = "{}: {:+.8f} {}, {:+.8f} {} ({:+.2f}%)".format(
-                    str(closedDate).rsplit('.')[0], netCurrency, position.currency, netBase,
+            positionText = "{}: {} {}, {} {} ({:+.2f}%)".format(
+                    str(closedDate).rsplit('.')[0], self._format(netCurrency, withSign=True),
+                    position.currency, self._format(netBase, withSign=True),
                     position.baseCurrency, position.baseProfitPercent())
             positionItems.append(PositionListItem(uiClass=Button, text=positionText, id=position.id))
             progressCallback()
@@ -329,9 +337,8 @@ class TrackerApp(App):
         for o in position.getOrders():
             values = [
                     str(o.closedDate).rsplit('.')[0], o.exchange, o.orderType, o.currency,
-                    o.baseCurrency, "{:.8f}".format(o.quantity), "{:.8f}".format(o.averagePrice()),
-                    "{:.8f}".format(o.subtotal), "{:.8f}".format(o.netCurrency),
-                    "{:.8f}".format(o.netBase)]
+                    o.baseCurrency, self._format(o.quantity), self._format(o.averagePrice()),
+                    self._format(o.subtotal), self._format(o.netCurrency), self._format(o.netBase)]
             data += [{'text': value, 'orderId': o.id, 'col': col} for col, value in enumerate(values)]
 
         view = PositionOrderListDialog(instance.positionId, position.isOpen, data, self._closePositionFromOrderList)

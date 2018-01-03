@@ -2,7 +2,7 @@ from sqlalchemy import Boolean, Column, DateTime, ForeignKey, Integer, String
 from sqlalchemy.orm import relationship
 from sqlalchemy.schema import Index
 
-from model import Base, Session
+from model import Base
 from names import ORDER_TYPE_BUY, ORDER_TYPE_SELL
 from trading.order import Order
 
@@ -47,17 +47,10 @@ class Position(Base):
         self.orders.remove(order)
 
     def currencyProfitLoss(self):
-        session = Session()
-        netCurrency = 0
-        for order in self.orders:
-            netCurrency += order.netCurrency
-        return netCurrency
+        return sum([order.netCurrency for order in self.orders])
 
     def baseProfitLoss(self):
-        netBase = 0
-        for order in self.orders:
-            netBase += order.netBase
-        return netBase
+        return sum([order.netBase for order in self.orders])
 
     def baseProfitPercent(self):
         absoluteBuys = 0
