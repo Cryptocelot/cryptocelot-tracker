@@ -62,7 +62,8 @@ class Order(Base):
             self.orderType = trade.orderType
             self.currency = trade.currency
             self.baseCurrency = trade.baseCurrency
-        self.closedDate = trade.closedDate
+        if not self.closedDate or self.closedDate < trade.closedDate:
+            self.closedDate = trade.closedDate
         self.quantity += trade.quantity
         self.subtotal += trade.subtotal
         self.currencyFee += trade.currencyFee
@@ -73,7 +74,31 @@ class Order(Base):
     def averagePrice(self):
         return self.subtotal / self.quantity
 
+    def replaceTotals(self, other):
+        self.closedDate = other.closedDate
+        self.quantity = other.quantity
+        self.subtotal = other.subtotal
+        self.currencyFee = other.currencyFee
+        self.baseFee = other.baseFee
+        self.netCurrency = other.netCurrency
+        self.netBase = other.netBase
+
     def __str__(self):
         return "{0} {1} {2} {3} at {4} {5}/{3} for {6} {5} on {7}".format(
                 self.closedDate, self.orderType, self.quantity, self.currency, self.averagePrice(),
                 self.baseCurrency, abs(self.netBase), self.exchange)
+
+    def __eq__(self, other):
+        return (
+                self.id == other.id
+                and self.exchange == other.exchange
+                and self.orderType == other.orderType
+                and self.currency == other.currency
+                and self.baseCurrency == other.baseCurrency
+                and self.closedDate == other.closedDate
+                and self.quantity == other.quantity
+                and self.subtotal == other.subtotal
+                and self.currencyFee == other.currencyFee
+                and self.baseFee == other.baseFee
+                and self.netCurrency == other.netCurrency
+                and self.netBase == other.netBase)

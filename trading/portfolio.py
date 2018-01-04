@@ -2,6 +2,7 @@ from sqlalchemy import Column, Integer
 from sqlalchemy.orm import relationship
 
 from model import Base, Session
+from trading.order import Order
 from trading.position import Position
 from trading.wallet import Wallet
 
@@ -20,7 +21,12 @@ class Portfolio(Base):
                 self.wallets.append(wallet)
             else:
                 wallet = self.wallets.filter(Wallet.name == order.exchange, Wallet.portfolio == self).first()
-            if order.id not in [order.id for order in wallet.orders]:
+            existingOrder = session.query(Order).get(order.id)
+            if existingOrder:
+                # incoming order is newer
+                if not order == existingOrder:
+                    existingOrder.replaceTotals(order)
+            else:
                 wallet.addOrder(order, session)
             progressCallback()
         progressCallback(text="Committing changes to database")
