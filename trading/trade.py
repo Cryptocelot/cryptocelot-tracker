@@ -21,6 +21,11 @@ class Trade():
         self.netCurrency = netCurrency
         self.netBase = netBase
 
+        if self.quantity and self.subtotal:
+            self.recalculateNetAmounts()
+
+    # A Trade may be constructed sequentially, so not all values are available at init.
+    # After setting other values, call this to update net amounts if not already set.
     def recalculateNetAmounts(self):
         if self.orderType == ORDER_TYPE_BUY:
             self.netCurrency = self.quantity - self.currencyFee

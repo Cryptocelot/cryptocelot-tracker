@@ -16,9 +16,8 @@ class Portfolio(Base):
         progressCallback(text="Adding orders to portfolio...", value=0, maxValue=len(orders))
         for order in orders:
             if order.exchange not in [wallet.name for wallet in self.wallets]:
-                wallet = Wallet(order.exchange)
+                wallet = Wallet(name=order.exchange, portfolio=self)
                 session.add(wallet)
-                self.wallets.append(wallet)
             else:
                 wallet = self.wallets.filter(Wallet.name == order.exchange, Wallet.portfolio == self).first()
             existingOrder = session.query(Order).get(order.id)

@@ -87,3 +87,14 @@ The application will detect sequences of orders that may be useful to calculate 
 
 ### Using the Refresh Feature
 To use the order refresh functionality, generate an API key on your exchange and restrict its permissions to those which allow only read access to orders and balances. Follow the example in keys.py to add your API key and secret. Currently, only Bittrex and Gemini are supported.
+
+## Development
+
+### Running Tests
+
+    # first time
+    pip install pytest pytest-cov
+    # before running tests in a new terminal
+    export PYTHONPATH=.
+
+    py.test tests --cov=. --cov-report term-missing

@@ -39,31 +39,24 @@ class Order(Base):
     netCurrency = Column(SqliteNumeric, nullable=False)
     netBase = Column(SqliteNumeric, nullable=False)
 
-    def __init__(self):
-        self.id = None
+    def __init__(self, trade):
+        self.id = trade.orderId
         self.walletName = None
         self.position = None
-        self.closedDate = None
-        self.exchange = None
-        self.orderType = None
-        self.currency = None
-        self.baseCurrency = None
-        self.quantity = 0
-        self.subtotal = 0
-        self.currencyFee = 0
-        self.baseFee = 0
-        self.netCurrency = 0
-        self.netBase = 0
+        self.closedDate = trade.closedDate
+        self.exchange = trade.exchange
+        self.orderType = trade.orderType
+        self.currency = trade.currency
+        self.baseCurrency = trade.baseCurrency
+        self.quantity = trade.quantity
+        self.subtotal = trade.subtotal
+        self.currencyFee = trade.currencyFee
+        self.baseFee = trade.baseFee
+        self.netCurrency = trade.netCurrency
+        self.netBase = trade.netBase
 
     def addTrade(self, trade):
-        if self.id is None:
-            self.id = trade.orderId
-            self.exchange = trade.exchange
-            self.orderType = trade.orderType
-            self.currency = trade.currency
-            self.baseCurrency = trade.baseCurrency
-        if not self.closedDate or self.closedDate < trade.closedDate:
-            self.closedDate = trade.closedDate
+        self.closedDate = max(self.closedDate, trade.closedDate)
         self.quantity += trade.quantity
         self.subtotal += trade.subtotal
         self.currencyFee += trade.currencyFee

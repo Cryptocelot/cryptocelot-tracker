@@ -19,8 +19,9 @@ class Wallet(Base):
     orders = relationship("Order", order_by=Order.closedDate, back_populates="wallet", lazy="dynamic")
     positions = relationship("Position", back_populates="wallet", lazy="dynamic")
 
-    def __init__(self, name):
+    def __init__(self, name, portfolio):
         self.name = name
+        self.portfolio = portfolio
         self.balances = {}
 
     def addOrder(self, order, session=None):

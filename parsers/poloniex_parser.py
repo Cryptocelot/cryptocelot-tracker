@@ -6,21 +6,18 @@ class PoloniexParser(HistoryParser):
     HEADERS = (
             'Date,Market,Category,Type,Price,Amount,Total,Fee,Order Number,'
             'Base Total Less Fee,Quote Total Less Fee',)
-    METHOD = "PoloniexCSV"
+    PARSER_TYPE = "PoloniexCSV"
 
-    @staticmethod
-    def parseHistory(history, progressCallback):
-        f = open(history)
-        lines = f.readlines()
-
+    @classmethod
+    def parse(cls, lines, progressCallback, callback):
+        lines = [line.strip() for line in lines]
         trades = []
-        progressCallback(text="Parsing {}...".format(history), value=0, maxValue=len(lines))
-        for line in lines[1:]:
-            line = line.strip().split(',')
+        progressCallback(value=0, maxValue=len(lines))
+        for line in lines:
             trade = Trade()
-            Mapper.mapRecordToTrade(line, trade, PoloniexParser.METHOD)
+            Mapper.mapRecordToTrade(line.split(','), trade, cls.PARSER_TYPE)
             trade.currencyFee = trade.quantity - abs(trade.netCurrency)
             trade.baseFee = trade.subtotal - abs(trade.netBase)
             trades.append(trade)
             progressCallback()
-        return HistoryParser.ordersFromTrades(trades)
+        callback(cls.ordersFromTrades(trades))

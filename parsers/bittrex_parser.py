@@ -11,25 +11,19 @@ class BittrexParser(HistoryParser):
                 '\x00a\x00i\x00d\x00,\x00P\x00r\x00i\x00c\x00e\x00,\x00O\x00p\x00e\x00n\x00e\x00d'
                 '\x00,\x00C\x00l\x00o\x00s\x00e\x00d\x00'
     )
-    METHOD = "BittrexCSV"
+    PARSER_TYPE = "BittrexCSV"
 
-    @staticmethod
-    def parseHistory(filename, progressCallback):
-        f = open(filename)
-        lines = [line.replace('\x00', '').strip() for line in f.readlines()]
-        lines.pop(0)
-        lines.pop()
-
+    @classmethod
+    def parse(cls, lines, progressCallback, callback):
+        lines = [line.replace('\x00', '').strip() for line in lines]
+        lines = [line for line in lines if line]
         trades = []
-        progressCallback(text="Parsing {}...".format(filename), value=0, maxValue=len(lines))
+        progressCallback(value=0, maxValue=len(lines))
         for line in lines:
-            if len(line) < 1:
-                progressCallback()
-                continue
             trade = Trade()
-            Mapper.mapRecordToTrade(line.split(','), trade, BittrexParser.METHOD)
+            Mapper.mapRecordToTrade(line.split(','), trade, cls.PARSER_TYPE)
             trade.price = trade.subtotal / trade.quantity
             trade.recalculateNetAmounts()
             trades.append(trade)
             progressCallback()
-        return HistoryParser.ordersFromTrades(trades)
+        callback(cls.ordersFromTrades(trades))

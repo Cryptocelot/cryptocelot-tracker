@@ -19,7 +19,7 @@ from kivy.uix.tabbedpanel import TabbedPanelItem
 
 from keys import KEYS
 from model import Base, engine, Session
-from parsers.history_parser import HistoryParser
+from parsers.history_parser_factory import HistoryParserFactory
 from pollers.bittrex_poller import BittrexPoller
 from pollers.gemini_poller import GeminiPoller
 from trading.order import Order
@@ -60,13 +60,24 @@ class TrackerApp(App):
         view.dismiss()
         if len(path) > 0:
             self.openImportProgressView()
-            threading.Thread(
-                    target=HistoryParser.parseHistory,
-                    kwargs={
-                            'filename': path[0],
-                            'progressCallback': self.updateProgress,
-                            'callback': self.doneParseHistory
-                    }).start()
+            filename = path[0]
+            f = open(filename)
+            self.updateProgress(text="Parsing {}...".format(filename))
+            header = f.readline().strip()
+            parser = HistoryParserFactory.detectParser(header)
+            if parser:
+                lines = f.readlines()
+                threading.Thread(
+                        target=parser.parse,
+                        kwargs={
+                                'lines': lines,
+                                'progressCallback': self.updateProgress,
+                                'callback': self.doneParseHistory
+                        }).start()
+            else:
+                Logger.warning("Parser: Unsupported history file '%s' with header: %s", filename, header)
+                self.updateProgress(text="Unsupported history file.")
+            f.close()
 
     @mainthread
     def openImportProgressView(self):
@@ -93,6 +104,7 @@ class TrackerApp(App):
         from a history file or retrieved from an exchange.
         """
 
+        self.updateProgress(text="Done parsing history.")
         threading.Thread(target=self._addParsedOrders, kwargs={
                 'orders': orders,
                 'progressCallback': self.updateProgress,
